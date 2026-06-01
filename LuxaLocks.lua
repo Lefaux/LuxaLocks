@@ -34,6 +34,7 @@ local state = {
 local function ensureDB()
     LuxaLocksDB.characters = LuxaLocksDB.characters or {}
     LuxaLocksDB.frame = LuxaLocksDB.frame or {}
+    LuxaLocksDB.minimap = LuxaLocksDB.minimap or {}
     LuxaLocksDB.accountName = LuxaLocksDB.accountName or nil
 end
 
@@ -224,6 +225,26 @@ local function getSavedFrame()
     return LuxaLocksDB.frame
 end
 
+local function getSavedMinimap()
+    ensureDB()
+
+    LuxaLocksDB.minimap.point = LuxaLocksDB.minimap.point or "TOPRIGHT"
+    LuxaLocksDB.minimap.relativePoint = LuxaLocksDB.minimap.relativePoint or "TOPRIGHT"
+    LuxaLocksDB.minimap.x = LuxaLocksDB.minimap.x or -6
+    LuxaLocksDB.minimap.y = LuxaLocksDB.minimap.y or -6
+
+    return LuxaLocksDB.minimap
+end
+
+local function saveMinimapPosition(button)
+    local point, _, relativePoint, x, y = button:GetPoint(1)
+    ensureDB()
+    LuxaLocksDB.minimap.point = point
+    LuxaLocksDB.minimap.relativePoint = relativePoint
+    LuxaLocksDB.minimap.x = math.floor(x + 0.5)
+    LuxaLocksDB.minimap.y = math.floor(y + 0.5)
+end
+
 local function formatCharacterLabel(record)
     local label = record.characterName or "unknown"
     if record.realmName and record.realmName ~= "" then
@@ -381,27 +402,53 @@ local function ensureMinimapButton()
     end
 
     local button = CreateFrame("Button", addonName .. "MinimapButton", Minimap)
+    local saved = getSavedMinimap()
+
     button:SetSize(31, 31)
     button:SetFrameStrata("MEDIUM")
+    button:SetFrameLevel(8)
     button:SetClampedToScreen(true)
-    button:SetMovable(false)
+    button:SetMovable(true)
     button:EnableMouse(true)
+    button:RegisterForDrag("LeftButton")
     button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    button:SetPoint("TOPRIGHT", Minimap, "TOPRIGHT", -6, -6)
+    button:SetClampRectInsets(0, -3, 0, 0)
+    button:SetPoint(saved.point, Minimap, saved.relativePoint, saved.x, saved.y)
+    button:SetScript("OnDragStart", function(self)
+        if IsShiftKeyDown() then
+            self:StartMoving()
+        end
+    end)
+    button:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        saveMinimapPosition(self)
+    end)
 
-    local icon = button:CreateTexture(nil, "BACKGROUND")
-    icon:SetAllPoints()
+    button:SetHighlightTexture(136477)
+
+    local overlay = button:CreateTexture(nil, "OVERLAY")
+    overlay:SetSize(53, 53)
+    overlay:SetTexture(136430)
+    overlay:SetPoint("TOPLEFT")
+    button.overlay = overlay
+
+    local background = button:CreateTexture(nil, "BACKGROUND")
+    background:SetSize(20, 20)
+    background:SetTexture(136467)
+    background:SetPoint("TOPLEFT", 7, -5)
+    button.background = background
+
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(17, 17)
+    icon:SetPoint("TOPLEFT", 7, -6)
     icon:SetTexture("Interface\\Icons\\Spell_Shadow_SummonImp")
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     button.icon = icon
-
-    local border = button:CreateTexture(nil, "OVERLAY")
-    border:SetAllPoints()
-    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    button.border = border
 
     button:SetScript("OnClick", function(_, mouseButton)
         if mouseButton == "LeftButton" then
+            if IsShiftKeyDown() then
+                return
+            end
             toggleFrame()
             return
         end
