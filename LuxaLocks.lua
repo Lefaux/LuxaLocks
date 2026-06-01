@@ -158,12 +158,16 @@ local function recordsAsArray()
         local a = left.record
         local b = right.record
 
-        if a.emptyBagSlots ~= b.emptyBagSlots then
-            return a.emptyBagSlots > b.emptyBagSlots
+        local aLocation = a.locationName or ""
+        local bLocation = b.locationName or ""
+        if aLocation ~= bLocation then
+            return aLocation < bLocation
         end
 
-        if a.characterName ~= b.characterName then
-            return a.characterName < b.characterName
+        local aName = a.characterName or ""
+        local bName = b.characterName or ""
+        if aName ~= bName then
+            return aName < bName
         end
 
         return (a.realmName or "") < (b.realmName or "")
