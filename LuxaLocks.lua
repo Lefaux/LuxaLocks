@@ -3,7 +3,7 @@ local addonName = ...
 LuxaLocksDB = LuxaLocksDB or {}
 
 local BAG_IDS = {0, 1, 2, 3, 4}
-local TEST_MODE_IGNORE_CLASS_LEVEL = true
+local TEST_MODE_IGNORE_CLASS_LEVEL = false
 
 local DEFAULT_FRAME = {
     point = "CENTER",
