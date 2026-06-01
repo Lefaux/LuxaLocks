@@ -1,0 +1,4 @@
+# Local editor and backup files only.
+*~
+*.swp
+*.tmp

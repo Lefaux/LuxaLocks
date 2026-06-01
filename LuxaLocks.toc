@@ -1,0 +1,8 @@
+## Interface: 11507
+## Title: LuxaLocks
+## Notes: Tracks empty bag slots for saved characters.
+## Author: Lefaux
+## Version: 1.0.0
+## SavedVariables: LuxaLocksDB
+
+LuxaLocks.lua
