@@ -18,6 +18,7 @@ local ROW_HEIGHT = 20
 local FRAME_PADDING = 12
 local SCROLLBAR_WIDTH = 20
 local RESIZE_GRIP_SIZE = 18
+local FONT_SIZE_BUMP = 2
 
 local state = {
     frame = nil,
@@ -266,6 +267,15 @@ local function formatLocationLabel(record)
     return record.locationName or "Unknown"
 end
 
+local function bumpFont(fontString)
+    local fontPath, fontSize, fontFlags = fontString:GetFont()
+    if not fontPath then
+        return
+    end
+
+    fontString:SetFont(fontPath, (fontSize or 12) + FONT_SIZE_BUMP, fontFlags)
+end
+
 local function ensureRow(index)
     local row = state.rows[index]
     if row then
@@ -280,15 +290,18 @@ local function ensureRow(index)
     name:SetJustifyH("LEFT")
     name:SetTextColor(0.95, 0.95, 0.95, 1)
     name:SetWidth(220)
+    bumpFont(name)
 
     local empty = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     empty:SetPoint("LEFT", name, "RIGHT", 8, 0)
     empty:SetJustifyH("CENTER")
     empty:SetWidth(70)
+    bumpFont(empty)
 
     local location = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     location:SetPoint("LEFT", empty, "RIGHT", 8, 0)
     location:SetJustifyH("LEFT")
+    bumpFont(location)
 
     row.name = name
     row.empty = empty
@@ -477,12 +490,11 @@ local function ensureFrame()
     frame:SetSize(saved.width, saved.height)
     frame:SetPoint(saved.point, UIParent, saved.relativePoint, saved.x, saved.y)
     frame:SetBackdrop({
-        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
         edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
         tile = true,
         edgeSize = 16,
     })
-    frame:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
+    frame:SetBackdropColor(0.05, 0.05, 0.05, 0.90)
     frame:SetBackdropBorderColor(0.55, 0.55, 0.55, 1)
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
@@ -510,6 +522,12 @@ local function ensureFrame()
     end)
     frame:Hide()
 
+    local frameBackground = frame:CreateTexture(nil, "BACKGROUND")
+    frameBackground:SetAllPoints()
+    frameBackground:SetTexture("Interface\\Buttons\\WHITE8X8")
+    frameBackground:SetVertexColor(0.05, 0.05, 0.05, 0.90)
+    state.frameBackground = frameBackground
+
     local header = CreateFrame("Frame", nil, frame)
     header:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
@@ -519,8 +537,8 @@ local function ensureFrame()
     header:SetFrameLevel(frame:GetFrameLevel() + 2)
     local headerBackdrop = header:CreateTexture(nil, "BACKGROUND")
     headerBackdrop:SetAllPoints()
-    headerBackdrop:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    headerBackdrop:SetVertexColor(0.12, 0.12, 0.12, 1)
+    headerBackdrop:SetTexture("Interface\\Buttons\\WHITE8X8")
+    headerBackdrop:SetVertexColor(0.12, 0.12, 0.12, 0.90)
     header:SetScript("OnDragStart", function()
         frame:StartMoving()
     end)
@@ -542,6 +560,7 @@ local function ensureFrame()
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", FRAME_PADDING, -8)
     title:SetText("LuxaLocks")
+    bumpFont(title)
     state.title = title
 
     local closeButton = CreateFrame("Button", nil, header, "UIPanelCloseButton")
@@ -554,6 +573,7 @@ local function ensureFrame()
     local summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     summary:SetPoint("TOPLEFT", frame, "TOPLEFT", FRAME_PADDING, -34)
     summary:SetText("Tracked: 0 | Current: 0 empty slots")
+    bumpFont(summary)
     state.summary = summary
 
     local scrollFrame = CreateFrame("ScrollFrame", addonName .. "ScrollFrame", frame, "UIPanelScrollFrameTemplate")
