@@ -24,6 +24,7 @@ local DEFAULT_FRAME = {
 }
 
 local ROW_HEIGHT = 20
+local ROW_COLUMN_GAP = 8
 local FRAME_PADDING = 12
 local SCROLLBAR_WIDTH = 20
 local RESIZE_GRIP_SIZE = 18
@@ -41,6 +42,7 @@ local state = {
     fontScrollChild = nil,
     fontSizeSlider = nil,
     opacitySlider = nil,
+    shortenRealmCheckbox = nil,
     fontRows = {},
     rows = {},
     dropdown = nil,
@@ -75,6 +77,11 @@ local function ensureSettings()
     settings.fontKey = settings.fontKey or DEFAULT_FONT_KEY
     settings.fontSize = tonumber(settings.fontSize) or DEFAULT_FONT_SIZE
     settings.opacity = tonumber(settings.opacity) or DEFAULT_OPACITY
+    if settings.shortenRealmNames == nil then
+        settings.shortenRealmNames = true
+    else
+        settings.shortenRealmNames = not not settings.shortenRealmNames
+    end
     settings.fontSize = math.max(MIN_FONT_SIZE, math.min(MAX_FONT_SIZE, math.floor(settings.fontSize + 0.5)))
     settings.opacity = math.max(MIN_OPACITY, math.min(MAX_OPACITY, settings.opacity))
 
@@ -126,6 +133,10 @@ local function abbreviateRealmName(realmName)
     end
 
     return realmName
+end
+
+local function shouldShortenRealmNames()
+    return ensureSettings().shortenRealmNames ~= false
 end
 
 local function getCharacterKey()
@@ -333,7 +344,11 @@ end
 local function formatCharacterLabel(record)
     local label = record.characterName or "unknown"
     if record.realmName and record.realmName ~= "" then
-        label = label .. " - " .. abbreviateRealmName(record.realmName)
+        local realmName = record.realmName
+        if shouldShortenRealmNames() then
+            realmName = abbreviateRealmName(realmName)
+        end
+        label = label .. " - " .. realmName
     end
 
     if record.level then
@@ -379,11 +394,23 @@ local function applyMainWindowTypography()
     end
 end
 
+local function refreshDisplayDeferred()
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            refreshDisplay()
+        end)
+        return
+    end
+
+    refreshDisplay()
+end
+
 local function selectFontKey(fontKey)
     ensureSettings().fontKey = fontKey
     applyMainWindowTypography()
     updateFontList()
     applyTypography()
+    refreshDisplayDeferred()
 end
 
 local function applyOpacity()
@@ -435,17 +462,15 @@ local function ensureRow(index)
     name:SetPoint("LEFT", 0, 0)
     name:SetJustifyH("LEFT")
     name:SetTextColor(0.95, 0.95, 0.95, 1)
-    name:SetWidth(220)
     applyFont(name, 0)
 
     local empty = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    empty:SetPoint("LEFT", name, "RIGHT", 8, 0)
+    empty:SetPoint("LEFT", name, "RIGHT", ROW_COLUMN_GAP, 0)
     empty:SetJustifyH("CENTER")
-    empty:SetWidth(70)
     applyFont(empty, 0)
 
     local location = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    location:SetPoint("LEFT", empty, "RIGHT", 8, 0)
+    location:SetPoint("LEFT", empty, "RIGHT", ROW_COLUMN_GAP, 0)
     location:SetJustifyH("LEFT")
     applyFont(location, 0)
 
@@ -462,25 +487,40 @@ local function layoutRows()
         return
     end
 
+    applyMainWindowTypography()
+
     local records = recordsAsArray()
     local width = math.max(1, (state.scrollFrame:GetWidth() or 0) - 12)
     local yOffset = -4
+    local widestNameWidth = 1
+    local widestEmptyWidth = 1
+
+    for index, entry in ipairs(records) do
+        local row = ensureRow(index)
+        row.name:SetText(formatCharacterLabel(entry.record))
+        widestNameWidth = math.max(widestNameWidth, math.ceil(row.name:GetStringWidth()))
+        row.empty:SetText(tostring(entry.record.emptyBagSlots or 0))
+        widestEmptyWidth = math.max(widestEmptyWidth, math.ceil(row.empty:GetStringWidth()))
+    end
 
     for index, entry in ipairs(records) do
         local row = ensureRow(index)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", state.scrollChild, "TOPLEFT", 0, yOffset)
-        row:SetHeight(getRowHeight())
         row:SetWidth(width)
-        row.name:SetWidth(math.max(140, math.floor(width * 0.42)))
-        row.empty:SetWidth(70)
-        row.location:ClearAllPoints()
-        row.location:SetPoint("LEFT", row.empty, "RIGHT", 8, 0)
-        row.location:SetWidth(math.max(80, width - row.name:GetWidth() - row.empty:GetWidth() - 24))
         row.name:SetText(formatCharacterLabel(entry.record))
         row.empty:SetText(tostring(entry.record.emptyBagSlots or 0))
         row.empty:SetTextColor(0.35, 0.85, 0.35, 1)
         row.location:SetText(formatLocationLabel(entry.record))
+
+        local locationWidth = math.max(40, width - widestNameWidth - widestEmptyWidth - (ROW_COLUMN_GAP * 2))
+
+        row.name:SetWidth(widestNameWidth)
+        row.empty:SetWidth(widestEmptyWidth)
+        row.location:SetWidth(locationWidth)
+        row.location:ClearAllPoints()
+        row.location:SetPoint("LEFT", row.empty, "RIGHT", ROW_COLUMN_GAP, 0)
+        row:SetHeight(math.max(getRowHeight(), math.ceil(row.location:GetStringHeight()) + 4))
         row:Show()
         yOffset = yOffset - getRowHeight()
     end
@@ -977,6 +1017,19 @@ local function ensureSettingsPanel()
     end)
     state.opacitySlider = opacitySlider
 
+    local shortenRealmCheckbox = CreateFrame("CheckButton", addonName .. "ShortenRealmCheckbox", panel, "UICheckButtonTemplate")
+    shortenRealmCheckbox:SetSize(22, 22)
+    shortenRealmCheckbox:SetPoint("TOPLEFT", opacitySlider, "BOTTOMLEFT", 0, -20)
+    shortenRealmCheckbox:SetScript("OnClick", function(self)
+        local settings = ensureSettings()
+        settings.shortenRealmNames = self:GetChecked() and true or false
+        refreshDisplay()
+    end)
+    local shortenRealmLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    shortenRealmLabel:SetPoint("LEFT", shortenRealmCheckbox, "RIGHT", 4, 0)
+    shortenRealmLabel:SetText("Shorten realm names")
+    state.shortenRealmCheckbox = shortenRealmCheckbox
+
     panel:SetScript("OnShow", function()
         updateFontList()
         if state.fontSizeSlider then
@@ -984,6 +1037,9 @@ local function ensureSettingsPanel()
         end
         if state.opacitySlider then
             state.opacitySlider:SetValue(ensureSettings().opacity)
+        end
+        if state.shortenRealmCheckbox then
+            state.shortenRealmCheckbox:SetChecked(ensureSettings().shortenRealmNames ~= false)
         end
     end)
 
