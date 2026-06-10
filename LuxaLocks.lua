@@ -4,6 +4,15 @@ LuxaLocksDB = LuxaLocksDB or {}
 
 local BAG_IDS = {0, 1, 2, 3, 4}
 local TEST_MODE_IGNORE_CLASS_LEVEL = false
+local DEFAULT_FONT_PATH = "Fonts\\FRIZQT__.TTF"
+local DEFAULT_FONT_SIZE = 12
+local DEFAULT_OPACITY = 0.90
+local TITLE_FONT_OFFSET = 4
+local MIN_FONT_SIZE = 8
+local MAX_FONT_SIZE = 24
+local MIN_OPACITY = 0.20
+local MAX_OPACITY = 1.00
+local DEFAULT_FONT_KEY = "Friz Quadrata TT"
 
 local DEFAULT_FRAME = {
     point = "CENTER",
@@ -18,7 +27,6 @@ local ROW_HEIGHT = 20
 local FRAME_PADDING = 12
 local SCROLLBAR_WIDTH = 20
 local RESIZE_GRIP_SIZE = 18
-local FONT_SIZE_BUMP = 2
 
 local state = {
     frame = nil,
@@ -27,6 +35,13 @@ local state = {
     scrollChild = nil,
     title = nil,
     summary = nil,
+    settingsPanel = nil,
+    settingsCategory = nil,
+    fontScrollFrame = nil,
+    fontScrollChild = nil,
+    fontSizeSlider = nil,
+    opacitySlider = nil,
+    fontRows = {},
     rows = {},
     dropdown = nil,
     minimapButton = nil,
@@ -36,7 +51,44 @@ local function ensureDB()
     LuxaLocksDB.characters = LuxaLocksDB.characters or {}
     LuxaLocksDB.frame = LuxaLocksDB.frame or {}
     LuxaLocksDB.minimap = LuxaLocksDB.minimap or {}
+    LuxaLocksDB.settings = LuxaLocksDB.settings or {}
     LuxaLocksDB.accountName = LuxaLocksDB.accountName or nil
+end
+
+local function getSharedMedia()
+    if not LibStub then
+        return nil
+    end
+
+    local ok, lib = pcall(LibStub, "LibSharedMedia-3.0", true)
+    if ok then
+        return lib
+    end
+
+    return nil
+end
+
+local function ensureSettings()
+    ensureDB()
+
+    local settings = LuxaLocksDB.settings
+    settings.fontKey = settings.fontKey or DEFAULT_FONT_KEY
+    settings.fontSize = tonumber(settings.fontSize) or DEFAULT_FONT_SIZE
+    settings.opacity = tonumber(settings.opacity) or DEFAULT_OPACITY
+    settings.fontSize = math.max(MIN_FONT_SIZE, math.min(MAX_FONT_SIZE, math.floor(settings.fontSize + 0.5)))
+    settings.opacity = math.max(MIN_OPACITY, math.min(MAX_OPACITY, settings.opacity))
+
+    local media = getSharedMedia()
+    local hasFont = false
+    if media and media.IsValid and media:IsValid("font", settings.fontKey) then
+        hasFont = true
+    end
+
+    if not hasFont then
+        settings.fontKey = DEFAULT_FONT_KEY
+    end
+
+    return settings
 end
 
 local function getAccountName()
@@ -58,6 +110,22 @@ end
 
 local function getRealmName()
     return GetRealmName() or "unknown"
+end
+
+local function abbreviateRealmName(realmName)
+    if realmName == "Pyrewood Village" then
+        return "PV"
+    end
+
+    if realmName == "Mirage Raceway" then
+        return "MR"
+    end
+
+    if realmName == "Nethergarde Keep" then
+        return "NK"
+    end
+
+    return realmName
 end
 
 local function getCharacterKey()
@@ -250,10 +318,22 @@ local function saveMinimapPosition(button)
     LuxaLocksDB.minimap.y = math.floor(y + 0.5)
 end
 
+local function getFontSettings()
+    local settings = ensureSettings()
+    local media = getSharedMedia()
+    local fontPath = media and media.Fetch and media:Fetch("font", settings.fontKey) or nil
+    return fontPath or DEFAULT_FONT_PATH, settings.fontSize
+end
+
+local function getRowHeight()
+    local _, fontSize = getFontSettings()
+    return math.max(ROW_HEIGHT, fontSize + 8)
+end
+
 local function formatCharacterLabel(record)
     local label = record.characterName or "unknown"
     if record.realmName and record.realmName ~= "" then
-        label = label .. " - " .. record.realmName
+        label = label .. " - " .. abbreviateRealmName(record.realmName)
     end
 
     if record.level then
@@ -267,13 +347,79 @@ local function formatLocationLabel(record)
     return record.locationName or "Unknown"
 end
 
-local function bumpFont(fontString)
-    local fontPath, fontSize, fontFlags = fontString:GetFont()
-    if not fontPath then
-        return
+local function applyFont(fontString, sizeOffset)
+    local fontPath, fontSize, fontFlags = getFontSettings()
+    fontString:SetFont(fontPath, fontSize + (sizeOffset or 0), fontFlags)
+end
+
+local updateFontList
+
+local function applyMainWindowTypography()
+    if state.title then
+        applyFont(state.title, TITLE_FONT_OFFSET)
     end
 
-    fontString:SetFont(fontPath, (fontSize or 12) + FONT_SIZE_BUMP, fontFlags)
+    if state.summary then
+        applyFont(state.summary, 0)
+    end
+
+    for _, row in ipairs(state.rows) do
+        if row.name then
+            applyFont(row.name, 0)
+        end
+        if row.empty then
+            applyFont(row.empty, 0)
+        end
+        if row.location then
+            applyFont(row.location, 0)
+        end
+        if row then
+            row:SetHeight(getRowHeight())
+        end
+    end
+end
+
+local function selectFontKey(fontKey)
+    ensureSettings().fontKey = fontKey
+    applyMainWindowTypography()
+    updateFontList()
+    applyTypography()
+end
+
+local function applyOpacity()
+    if state.frame then
+        state.frame:SetAlpha(ensureSettings().opacity)
+    end
+end
+
+local function getAvailableFonts()
+    local media = getSharedMedia()
+    local fonts = {}
+
+    if media and media.List then
+        local entries = media:List("font") or {}
+        for _, key in ipairs(entries) do
+            table.insert(fonts, {
+                key = key,
+                label = key,
+            })
+        end
+    end
+
+    if #fonts == 0 then
+        fonts = {
+            {label = "Friz Quadrata TT", key = "Friz Quadrata TT"},
+            {label = "Arial Narrow", key = "Arial Narrow"},
+            {label = "Morpheus", key = "Morpheus"},
+            {label = "Skurri", key = "Skurri"},
+        }
+    end
+
+    table.sort(fonts, function(left, right)
+        return left.label < right.label
+    end)
+
+    return fonts
 end
 
 local function ensureRow(index)
@@ -283,25 +429,25 @@ local function ensureRow(index)
     end
 
     row = CreateFrame("Frame", nil, state.scrollChild)
-    row:SetHeight(ROW_HEIGHT)
+    row:SetHeight(getRowHeight())
 
     local name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     name:SetPoint("LEFT", 0, 0)
     name:SetJustifyH("LEFT")
     name:SetTextColor(0.95, 0.95, 0.95, 1)
     name:SetWidth(220)
-    bumpFont(name)
+    applyFont(name, 0)
 
     local empty = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     empty:SetPoint("LEFT", name, "RIGHT", 8, 0)
     empty:SetJustifyH("CENTER")
     empty:SetWidth(70)
-    bumpFont(empty)
+    applyFont(empty, 0)
 
     local location = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     location:SetPoint("LEFT", empty, "RIGHT", 8, 0)
     location:SetJustifyH("LEFT")
-    bumpFont(location)
+    applyFont(location, 0)
 
     row.name = name
     row.empty = empty
@@ -324,6 +470,7 @@ local function layoutRows()
         local row = ensureRow(index)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", state.scrollChild, "TOPLEFT", 0, yOffset)
+        row:SetHeight(getRowHeight())
         row:SetWidth(width)
         row.name:SetWidth(math.max(140, math.floor(width * 0.42)))
         row.empty:SetWidth(70)
@@ -335,7 +482,7 @@ local function layoutRows()
         row.empty:SetTextColor(0.35, 0.85, 0.35, 1)
         row.location:SetText(formatLocationLabel(entry.record))
         row:Show()
-        yOffset = yOffset - ROW_HEIGHT
+        yOffset = yOffset - getRowHeight()
     end
 
     for index = #records + 1, #state.rows do
@@ -518,6 +665,7 @@ local function ensureFrame()
         refreshDisplay()
     end)
     frame:SetScript("OnShow", function()
+        applyOpacity()
         refreshDisplay()
     end)
     frame:Hide()
@@ -560,7 +708,7 @@ local function ensureFrame()
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", FRAME_PADDING, -8)
     title:SetText("LuxaLocks")
-    bumpFont(title)
+    applyFont(title, TITLE_FONT_OFFSET)
     state.title = title
 
     local closeButton = CreateFrame("Button", nil, header, "UIPanelCloseButton")
@@ -573,7 +721,7 @@ local function ensureFrame()
     local summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     summary:SetPoint("TOPLEFT", frame, "TOPLEFT", FRAME_PADDING, -34)
     summary:SetText("Tracked: 0 | Current: 0 empty slots")
-    bumpFont(summary)
+    applyFont(summary, 0)
     state.summary = summary
 
     local scrollFrame = CreateFrame("ScrollFrame", addonName .. "ScrollFrame", frame, "UIPanelScrollFrameTemplate")
@@ -624,8 +772,233 @@ local function ensureFrame()
 
     state.frame = frame
     ensureMinimapButton()
+    ensureSettingsPanel()
+    applyTypography()
+    applyOpacity()
     refreshDisplay()
     return frame
+end
+
+local function ensureFontRow(index)
+    local row = state.fontRows[index]
+    if row then
+        return row
+    end
+
+    local parent = state.fontScrollChild
+    local button = CreateFrame("Button", nil, parent)
+    button:SetSize(280, 20)
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetColorTexture(1, 1, 1, 0.12)
+    button.highlight = highlight
+
+    local selected = button:CreateTexture(nil, "BACKGROUND")
+    selected:SetAllPoints()
+    selected:SetColorTexture(1, 0.82, 0.2, 0.18)
+    selected:Hide()
+    button.selected = selected
+
+    local text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    text:SetPoint("LEFT", 6, 0)
+    text:SetJustifyH("LEFT")
+    button.text = text
+
+    button:SetScript("OnClick", function()
+        local fontKey = button.fontKey
+        if fontKey then
+            selectFontKey(fontKey)
+        end
+    end)
+
+    state.fontRows[index] = button
+    return button
+end
+
+local function updateFontList()
+    if not state.fontScrollChild or not state.fontScrollFrame then
+        return
+    end
+
+    local fonts = getAvailableFonts()
+    local rowHeight = 20
+    local totalHeight = math.max(rowHeight, #fonts * rowHeight)
+    local selectedFontKey = ensureSettings().fontKey
+
+    for index, entry in ipairs(fonts) do
+        local row = ensureFontRow(index)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", state.fontScrollChild, "TOPLEFT", 0, -(index - 1) * rowHeight)
+        row:SetWidth(state.fontScrollChild:GetWidth() or 280)
+        row.fontKey = entry.key
+        row.text:SetText(entry.label)
+        if row.selected then
+            if selectedFontKey == entry.key then
+                row.selected:Show()
+            else
+                row.selected:Hide()
+            end
+        end
+        if selectedFontKey == entry.key then
+            row.text:SetTextColor(1, 0.82, 0.2, 1)
+        else
+            row.text:SetTextColor(0.95, 0.95, 0.95, 1)
+        end
+        row:Show()
+    end
+
+    for index = #fonts + 1, #state.fontRows do
+        if state.fontRows[index] then
+            state.fontRows[index]:Hide()
+        end
+    end
+
+    state.fontScrollChild:SetHeight(totalHeight)
+    state.fontScrollFrame:SetVerticalScroll(0)
+    if state.fontScrollFrame.UpdateScrollChildRect then
+        state.fontScrollFrame:UpdateScrollChildRect()
+    end
+end
+
+local function applyTypography()
+    applyMainWindowTypography()
+
+    if state.fontSizeSlider then
+        state.fontSizeSlider:SetValue(ensureSettings().fontSize)
+    end
+
+    if state.opacitySlider then
+        state.opacitySlider:SetValue(ensureSettings().opacity)
+    end
+
+    updateFontList()
+    applyOpacity()
+    refreshDisplay()
+end
+
+local function ensureSettingsPanel()
+    if state.settingsPanel then
+        return state.settingsPanel
+    end
+
+    local panel = CreateFrame("Frame", addonName .. "SettingsPanel", UIParent)
+    panel.name = "LuxaLocks"
+
+    local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("LuxaLocks")
+
+    local subtitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    subtitle:SetText("Configure the font used by the LuxaLocks window.")
+
+    local fontLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fontLabel:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -18)
+    fontLabel:SetText("Font")
+
+    local fontScrollFrame = CreateFrame("ScrollFrame", addonName .. "FontScrollFrame", panel, "UIPanelScrollFrameTemplate")
+    fontScrollFrame:SetPoint("TOPLEFT", fontLabel, "BOTTOMLEFT", 0, -8)
+    fontScrollFrame:SetSize(300, 150)
+    fontScrollFrame:EnableMouseWheel(true)
+
+    local fontScrollChild = CreateFrame("Frame", nil, fontScrollFrame)
+    fontScrollChild:SetPoint("TOPLEFT", fontScrollFrame, "TOPLEFT", 0, 0)
+    fontScrollChild:SetWidth(280)
+    fontScrollChild:SetHeight(1)
+    fontScrollFrame:SetScrollChild(fontScrollChild)
+    state.fontScrollFrame = fontScrollFrame
+    state.fontScrollChild = fontScrollChild
+
+    fontScrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local scrollBar = self.ScrollBar
+        if not scrollBar then
+            return
+        end
+
+        local step = 24
+        local minValue, maxValue = scrollBar:GetMinMaxValues()
+        local newValue = scrollBar:GetValue() - (delta * step)
+        if newValue < minValue then
+            newValue = minValue
+        elseif newValue > maxValue then
+            newValue = maxValue
+        end
+        scrollBar:SetValue(newValue)
+    end)
+
+    local sizeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    sizeLabel:SetPoint("TOPLEFT", fontScrollFrame, "BOTTOMLEFT", 16, -12)
+    sizeLabel:SetText("Font size")
+
+    local slider = CreateFrame("Slider", addonName .. "FontSizeSlider", panel, "OptionsSliderTemplate")
+    slider:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -12)
+    slider:SetWidth(240)
+    slider:SetMinMaxValues(MIN_FONT_SIZE, MAX_FONT_SIZE)
+    slider:SetValueStep(1)
+    slider:SetObeyStepOnDrag(true)
+    slider:SetValue(ensureSettings().fontSize)
+    _G[slider:GetName() .. "Low"]:SetText(tostring(MIN_FONT_SIZE))
+    _G[slider:GetName() .. "High"]:SetText(tostring(MAX_FONT_SIZE))
+    _G[slider:GetName() .. "Text"]:SetText("Font size")
+    slider:SetScript("OnValueChanged", function(self, value)
+        value = math.floor(value + 0.5)
+        local settings = ensureSettings()
+        if settings.fontSize == value then
+            return
+        end
+        settings.fontSize = value
+        applyTypography()
+    end)
+    state.fontSizeSlider = slider
+
+    local opacityLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    opacityLabel:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", 0, -20)
+    opacityLabel:SetText("Window opacity")
+
+    local opacitySlider = CreateFrame("Slider", addonName .. "OpacitySlider", panel, "OptionsSliderTemplate")
+    opacitySlider:SetPoint("TOPLEFT", opacityLabel, "BOTTOMLEFT", 0, -12)
+    opacitySlider:SetWidth(240)
+    opacitySlider:SetMinMaxValues(MIN_OPACITY, MAX_OPACITY)
+    opacitySlider:SetValueStep(0.01)
+    opacitySlider:SetObeyStepOnDrag(true)
+    opacitySlider:SetValue(ensureSettings().opacity)
+    _G[opacitySlider:GetName() .. "Low"]:SetText(string.format("%.0f%%", MIN_OPACITY * 100))
+    _G[opacitySlider:GetName() .. "High"]:SetText(string.format("%.0f%%", MAX_OPACITY * 100))
+    _G[opacitySlider:GetName() .. "Text"]:SetText("Window opacity")
+    opacitySlider:SetScript("OnValueChanged", function(self, value)
+        value = math.floor((value * 100) + 0.5) / 100
+        local settings = ensureSettings()
+        if settings.opacity == value then
+            return
+        end
+        settings.opacity = value
+        applyOpacity()
+    end)
+    state.opacitySlider = opacitySlider
+
+    panel:SetScript("OnShow", function()
+        updateFontList()
+        if state.fontSizeSlider then
+            state.fontSizeSlider:SetValue(ensureSettings().fontSize)
+        end
+        if state.opacitySlider then
+            state.opacitySlider:SetValue(ensureSettings().opacity)
+        end
+    end)
+
+    if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
+        local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+        category.ID = panel.name
+        Settings.RegisterAddOnCategory(category)
+        state.settingsCategory = category
+    elseif InterfaceOptions_AddCategory then
+        InterfaceOptions_AddCategory(panel)
+    end
+
+    state.settingsPanel = panel
+    updateFontList()
+    return panel
 end
 
 local function showFrame()
@@ -656,7 +1029,20 @@ local function handleSlashCommand(msg)
         return
     end
 
-    print("|cff66ccffLuxaLocks|r commands: /luxalocks, /luxalocks show, /luxalocks hide, /luxalocks refresh")
+    if command == "options" or command == "config" then
+        local panel = ensureSettingsPanel()
+        if Settings and Settings.OpenToCategory and state.settingsCategory then
+            Settings.OpenToCategory(state.settingsCategory.ID)
+        elseif InterfaceOptionsFrame_Show and InterfaceOptionsFrame_OpenToCategory then
+            InterfaceOptionsFrame_Show()
+            InterfaceOptionsFrame_OpenToCategory(panel)
+        elseif panel.Show then
+            panel:Show()
+        end
+        return
+    end
+
+    print("|cff66ccffLuxaLocks|r commands: /luxalocks, /luxalocks show, /luxalocks hide, /luxalocks refresh, /luxalocks options")
 end
 
 local function handleUpdate()
@@ -667,6 +1053,7 @@ local function handleUpdate()
 end
 
 local eventFrame = CreateFrame("Frame")
+eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
@@ -676,10 +1063,18 @@ eventFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 
 eventFrame:SetScript("OnEvent", function(_, event)
+    if event == "ADDON_LOADED" then
+        ensureDB()
+        ensureSettings()
+        ensureSettingsPanel()
+        return
+    end
+
     if event == "PLAYER_LOGIN" then
         SLASH_LUXALOCKS1 = "/luxalocks"
         SlashCmdList["LUXALOCKS"] = handleSlashCommand
         ensureDB()
+        ensureSettings()
         ensureFrame()
         saveCurrentCharacter(true)
         refreshDisplay()
