@@ -45,6 +45,7 @@ local state = {
     shortenRealmCheckbox = nil,
     fontRows = {},
     rows = {},
+    headerRows = {},
     dropdown = nil,
     minimapButton = nil,
 }
@@ -81,6 +82,11 @@ local function ensureSettings()
         settings.shortenRealmNames = true
     else
         settings.shortenRealmNames = not not settings.shortenRealmNames
+    end
+    if settings.groupLocksByRealm == nil then
+        settings.groupLocksByRealm = false
+    else
+        settings.groupLocksByRealm = not not settings.groupLocksByRealm
     end
     settings.fontSize = math.max(MIN_FONT_SIZE, math.min(MAX_FONT_SIZE, math.floor(settings.fontSize + 0.5)))
     settings.opacity = math.max(MIN_OPACITY, math.min(MAX_OPACITY, settings.opacity))
@@ -225,6 +231,7 @@ end
 
 local function recordsAsArray()
     ensureDB()
+    local settings = ensureSettings()
 
     local records = {}
     for key, record in pairs(LuxaLocksDB.characters) do
@@ -237,6 +244,28 @@ local function recordsAsArray()
     table.sort(records, function(left, right)
         local a = left.record
         local b = right.record
+
+        if settings.groupLocksByRealm then
+            local aRealm = a.realmName or ""
+            local bRealm = b.realmName or ""
+            if aRealm ~= bRealm then
+                return aRealm < bRealm
+            end
+
+            local aEmpty = tonumber(a.emptyBagSlots) or 0
+            local bEmpty = tonumber(b.emptyBagSlots) or 0
+            if aEmpty ~= bEmpty then
+                return aEmpty > bEmpty
+            end
+
+            local aName = a.characterName or ""
+            local bName = b.characterName or ""
+            if aName ~= bName then
+                return aName < bName
+            end
+
+            return (a.locationName or "") < (b.locationName or "")
+        end
 
         local aLocation = a.locationName or ""
         local bLocation = b.locationName or ""
@@ -362,6 +391,14 @@ local function formatLocationLabel(record)
     return record.locationName or "Unknown"
 end
 
+local function formatRealmLabel(realmName)
+    if shouldShortenRealmNames() then
+        return abbreviateRealmName(realmName or "Unknown")
+    end
+
+    return realmName or "Unknown"
+end
+
 local function applyFont(fontString, sizeOffset)
     local fontPath, fontSize, fontFlags = getFontSettings()
     fontString:SetFont(fontPath, fontSize + (sizeOffset or 0), fontFlags)
@@ -482,6 +519,27 @@ local function ensureRow(index)
     return row
 end
 
+local function ensureHeaderRow(index)
+    local row = state.headerRows[index]
+    if row then
+        return row
+    end
+
+    row = CreateFrame("Frame", nil, state.scrollChild)
+    row:SetHeight(getRowHeight())
+
+    local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetPoint("LEFT", 0, 0)
+    label:SetJustifyH("LEFT")
+    label:SetTextColor(0.65, 0.65, 0.65, 1)
+    applyFont(label, 0)
+
+    row.label = label
+    state.headerRows[index] = row
+
+    return row
+end
+
 local function layoutRows()
     if not state.scrollChild or not state.scrollFrame then
         return
@@ -494,6 +552,9 @@ local function layoutRows()
     local yOffset = -4
     local widestNameWidth = 1
     local widestEmptyWidth = 1
+    local groupedByRealm = ensureSettings().groupLocksByRealm == true
+    local renderItems = {}
+    local currentRealm = nil
 
     for index, entry in ipairs(records) do
         local row = ensureRow(index)
@@ -503,31 +564,79 @@ local function layoutRows()
         widestEmptyWidth = math.max(widestEmptyWidth, math.ceil(row.empty:GetStringWidth()))
     end
 
-    for index, entry in ipairs(records) do
-        local row = ensureRow(index)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", state.scrollChild, "TOPLEFT", 0, yOffset)
-        row:SetWidth(width)
-        row.name:SetText(formatCharacterLabel(entry.record))
-        row.empty:SetText(tostring(entry.record.emptyBagSlots or 0))
-        row.empty:SetTextColor(0.35, 0.85, 0.35, 1)
-        row.location:SetText(formatLocationLabel(entry.record))
+    if groupedByRealm then
+        for _, entry in ipairs(records) do
+            local realmName = entry.record.realmName or ""
+            if realmName ~= currentRealm then
+                currentRealm = realmName
+                table.insert(renderItems, {
+                    kind = "header",
+                    label = formatRealmLabel(realmName),
+                })
+            end
 
-        local locationWidth = math.max(40, width - widestNameWidth - widestEmptyWidth - (ROW_COLUMN_GAP * 2))
-
-        row.name:SetWidth(widestNameWidth)
-        row.empty:SetWidth(widestEmptyWidth)
-        row.location:SetWidth(locationWidth)
-        row.location:ClearAllPoints()
-        row.location:SetPoint("LEFT", row.empty, "RIGHT", ROW_COLUMN_GAP, 0)
-        row:SetHeight(math.max(getRowHeight(), math.ceil(row.location:GetStringHeight()) + 4))
-        row:Show()
-        yOffset = yOffset - getRowHeight()
+            table.insert(renderItems, {
+                kind = "record",
+                record = entry.record,
+            })
+        end
+    else
+        for _, entry in ipairs(records) do
+            table.insert(renderItems, {
+                kind = "record",
+                record = entry.record,
+            })
+        end
     end
 
-    for index = #records + 1, #state.rows do
+    local recordIndex = 0
+    local headerIndex = 0
+
+    for _, item in ipairs(renderItems) do
+        if item.kind == "header" then
+            headerIndex = headerIndex + 1
+            local row = ensureHeaderRow(headerIndex)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", state.scrollChild, "TOPLEFT", 0, yOffset)
+            row:SetWidth(width)
+            row.label:SetText(item.label)
+            row.label:SetWidth(width)
+            row:SetHeight(getRowHeight())
+            row:Show()
+            yOffset = yOffset - getRowHeight()
+        else
+            recordIndex = recordIndex + 1
+            local row = ensureRow(recordIndex)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", state.scrollChild, "TOPLEFT", 0, yOffset)
+            row:SetWidth(width)
+            row.name:SetText(formatCharacterLabel(item.record))
+            row.empty:SetText(tostring(item.record.emptyBagSlots or 0))
+            row.empty:SetTextColor(0.35, 0.85, 0.35, 1)
+            row.location:SetText(formatLocationLabel(item.record))
+
+            local locationWidth = math.max(40, width - widestNameWidth - widestEmptyWidth - (ROW_COLUMN_GAP * 2))
+
+            row.name:SetWidth(widestNameWidth)
+            row.empty:SetWidth(widestEmptyWidth)
+            row.location:SetWidth(locationWidth)
+            row.location:ClearAllPoints()
+            row.location:SetPoint("LEFT", row.empty, "RIGHT", ROW_COLUMN_GAP, 0)
+            row:SetHeight(math.max(getRowHeight(), math.ceil(row.location:GetStringHeight()) + 4))
+            row:Show()
+            yOffset = yOffset - getRowHeight()
+        end
+    end
+
+    for index = recordIndex + 1, #state.rows do
         if state.rows[index] then
             state.rows[index]:Hide()
+        end
+    end
+
+    for index = headerIndex + 1, #state.headerRows do
+        if state.headerRows[index] then
+            state.headerRows[index]:Hide()
         end
     end
 
@@ -1030,6 +1139,19 @@ local function ensureSettingsPanel()
     shortenRealmLabel:SetText("Shorten realm names")
     state.shortenRealmCheckbox = shortenRealmCheckbox
 
+    local groupLocksCheckbox = CreateFrame("CheckButton", addonName .. "GroupLocksByRealmCheckbox", panel, "UICheckButtonTemplate")
+    groupLocksCheckbox:SetSize(22, 22)
+    groupLocksCheckbox:SetPoint("TOPLEFT", shortenRealmCheckbox, "BOTTOMLEFT", 0, -14)
+    groupLocksCheckbox:SetScript("OnClick", function(self)
+        local settings = ensureSettings()
+        settings.groupLocksByRealm = self:GetChecked() and true or false
+        refreshDisplay()
+    end)
+    local groupLocksLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    groupLocksLabel:SetPoint("LEFT", groupLocksCheckbox, "RIGHT", 4, 0)
+    groupLocksLabel:SetText("Group Locks by Realm")
+    state.groupLocksCheckbox = groupLocksCheckbox
+
     panel:SetScript("OnShow", function()
         updateFontList()
         if state.fontSizeSlider then
@@ -1040,6 +1162,9 @@ local function ensureSettingsPanel()
         end
         if state.shortenRealmCheckbox then
             state.shortenRealmCheckbox:SetChecked(ensureSettings().shortenRealmNames ~= false)
+        end
+        if state.groupLocksCheckbox then
+            state.groupLocksCheckbox:SetChecked(ensureSettings().groupLocksByRealm == true)
         end
     end)
 
