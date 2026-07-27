@@ -262,7 +262,7 @@ LuxaLocks does not prevent editing while grouped.
 
 Shows or hides the bag-slot window.
 
-### Shift-drag
+### Drag
 
 Moves the minimap button.
 
@@ -444,6 +444,21 @@ LuxaLocks does not transmit data outside World of Warcraft. Queue and
 configuration data are stored in local SavedVariables and exchanged only with
 grouped WoW clients using the LuxaLocks addon-message prefix.
 
+## Bundled libraries
+
+LuxaLocks embeds the following standard WoW libraries for its minimap
+launcher:
+
+- LibStub.
+- CallbackHandler-1.0.
+- LibDataBroker-1.1.
+- LibDBIcon-1.0.
+
+These libraries retain their upstream copyright and licensing terms. The
+LibDBIcon launcher replaces the addon's former custom minimap button and is
+compatible with minimap-button collectors that recognize standard LibDBIcon
+objects.
+
 ## Contributing
 
 Bug reports and pull requests are welcome.
@@ -461,6 +476,7 @@ Avoid committing personal `WTF` data or SavedVariables files to the repository.
 
 ## License
 
-No license is currently declared in this repository. Add a `LICENSE` file
-before distributing or accepting contributions if you want to define
-permissions for reuse, modification, and redistribution.
+No license is currently declared for LuxaLocks itself. The files under `Libs`
+retain their respective upstream licenses. Add a root `LICENSE` file before
+distributing or accepting contributions if you want to define permissions for
+reuse, modification, and redistribution of the addon code.

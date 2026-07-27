@@ -759,63 +759,39 @@ ensureMinimapButton = function()
         return state.minimapButton
     end
 
-    local button = CreateFrame("Button", addonName .. "MinimapButton", Minimap)
     local saved = getSavedMinimap()
+    saved.hide = saved.hide == true
+    saved.minimapPos = tonumber(saved.minimapPos) or 220
 
-    button:SetSize(31, 31)
-    button:SetFrameStrata("MEDIUM")
-    button:SetFrameLevel(8)
-    button:SetClampedToScreen(true)
-    button:SetMovable(true)
-    button:EnableMouse(true)
-    button:RegisterForDrag("LeftButton")
-    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    button:SetClampRectInsets(0, -3, 0, 0)
-    button:SetPoint(saved.point, Minimap, saved.relativePoint, saved.x, saved.y)
-    button:SetScript("OnDragStart", function(self)
-        if IsShiftKeyDown() then
-            self:StartMoving()
-        end
-    end)
-    button:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        saveMinimapPosition(self)
-    end)
+    local ldb = LibStub("LibDataBroker-1.1")
+    local iconLibrary = LibStub("LibDBIcon-1.0")
+    local broker = ldb:GetDataObjectByName(addonName)
+    if not broker then
+        broker = ldb:NewDataObject(addonName, {
+            type = "launcher",
+            text = addonName,
+            icon = "Interface\\Icons\\Spell_Shadow_SummonImp",
+            OnClick = function(button, mouseButton)
+                if mouseButton == "LeftButton" then
+                    toggleFrame()
+                elseif mouseButton == "RightButton" then
+                    showMenu(button)
+                end
+            end,
+            OnTooltipShow = function(tooltip)
+                tooltip:AddLine("LuxaLocks")
+                tooltip:AddLine("Left-click: bag-slot window", 1, 1, 1)
+                tooltip:AddLine("Right-click: menu", 1, 1, 1)
+                tooltip:AddLine("Drag: move minimap icon", 1, 1, 1)
+            end,
+        })
+    end
 
-    button:SetHighlightTexture(136477)
+    if not iconLibrary:IsRegistered(addonName) then
+        iconLibrary:Register(addonName, broker, saved)
+    end
 
-    local overlay = button:CreateTexture(nil, "OVERLAY")
-    overlay:SetSize(53, 53)
-    overlay:SetTexture(136430)
-    overlay:SetPoint("TOPLEFT")
-    button.overlay = overlay
-
-    local background = button:CreateTexture(nil, "BACKGROUND")
-    background:SetSize(20, 20)
-    background:SetTexture(136467)
-    background:SetPoint("TOPLEFT", 7, -5)
-    button.background = background
-
-    local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(17, 17)
-    icon:SetPoint("TOPLEFT", 7, -6)
-    icon:SetTexture("Interface\\Icons\\Spell_Shadow_SummonImp")
-    button.icon = icon
-
-    button:SetScript("OnClick", function(_, mouseButton)
-        if mouseButton == "LeftButton" then
-            if IsShiftKeyDown() then
-                return
-            end
-            toggleFrame()
-            return
-        end
-
-        if mouseButton == "RightButton" then
-            showMenu(button)
-        end
-    end)
-
+    local button = iconLibrary:GetMinimapButton(addonName)
     state.minimapButton = button
     return button
 end
