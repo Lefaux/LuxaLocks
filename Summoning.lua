@@ -703,6 +703,15 @@ function LuxaLocksSummoning.ToggleQueue()
     if frame:IsShown() then frame:Hide() else frame:Show() end
 end
 
+function LuxaLocksSummoning.ShowQueue()
+    if not isEligibleCharacter() then
+        UIErrorsFrame:AddMessage("LuxaLocks summoning requires a level 20+ warlock.", 1, .2, .2)
+        return
+    end
+    ensureQueueFrame():Show()
+    refreshQueue()
+end
+
 function LuxaLocksSummoning.Sync()
     if not isEligibleCharacter() or not IsInGroup() then
         UIErrorsFrame:AddMessage("LuxaLocks: Join a group to synchronize.", 1, .2, .2)

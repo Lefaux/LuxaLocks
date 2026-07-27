@@ -298,14 +298,20 @@ Hides the bag-slot window.
 Refreshes the current character's bag-slot record.
 
 ```text
+/luxalocks q
+/luxalocks queue
+```
+
+Opens the summoning queue window.
+
+```text
 /luxalocks options
 /luxalocks config
 ```
 
 Opens the LuxaLocks settings.
 
-The summoning queue and manual synchronization are available from the
-minimap menu.
+Manual synchronization is available from the minimap menu.
 
 ## Bag-slot overview
 

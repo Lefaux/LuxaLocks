@@ -1232,6 +1232,13 @@ local function handleSlashCommand(msg)
         return
     end
 
+    if command == "q" or command == "queue" then
+        if LuxaLocksSummoning and LuxaLocksSummoning.ShowQueue then
+            LuxaLocksSummoning.ShowQueue()
+        end
+        return
+    end
+
     if command == "options" or command == "config" then
         local panel = ensureSettingsPanel()
         if Settings and Settings.OpenToCategory and state.settingsCategory then
@@ -1245,7 +1252,7 @@ local function handleSlashCommand(msg)
         return
     end
 
-    print("|cff66ccffLuxaLocks|r commands: /luxalocks, /luxalocks show, /luxalocks hide, /luxalocks refresh, /luxalocks options")
+    print("|cff66ccffLuxaLocks|r commands: /luxalocks, /luxalocks show, /luxalocks hide, /luxalocks q, /luxalocks refresh, /luxalocks options")
 end
 
 local function handleUpdate()
