@@ -405,6 +405,12 @@ local function applyFont(fontString, sizeOffset)
 end
 
 local updateFontList
+local ensureSettingsPanel
+local ensureMinimapButton
+local applyTypography
+local applyOpacity
+local refreshDisplay
+local refreshDisplayDeferred
 
 local function applyMainWindowTypography()
     if state.title then
@@ -431,7 +437,7 @@ local function applyMainWindowTypography()
     end
 end
 
-local function refreshDisplayDeferred()
+refreshDisplayDeferred = function()
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
             refreshDisplay()
@@ -450,7 +456,7 @@ local function selectFontKey(fontKey)
     refreshDisplayDeferred()
 end
 
-local function applyOpacity()
+applyOpacity = function()
     if state.frame then
         state.frame:SetAlpha(ensureSettings().opacity)
     end
@@ -649,7 +655,7 @@ local function layoutRows()
     end
 end
 
-local function refreshDisplay()
+refreshDisplay = function()
     if not state.frame then
         return
     end
@@ -681,35 +687,74 @@ local function toggleFrame()
 end
 
 local function showMenu(anchor)
+    local function refreshData()
+        saveCurrentCharacter(true)
+        refreshDisplay()
+    end
+
+    local function closeWindow()
+        if state.frame then
+            state.frame:Hide()
+        end
+    end
+
+    local function toggleQueue()
+        if LuxaLocksSummoning and LuxaLocksSummoning.ToggleQueue then
+            LuxaLocksSummoning.ToggleQueue()
+        end
+    end
+
+    local function syncSummoning()
+        if LuxaLocksSummoning and LuxaLocksSummoning.Sync then
+            LuxaLocksSummoning.Sync()
+        end
+    end
+
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        MenuUtil.CreateContextMenu(anchor, function(_, rootDescription)
+            rootDescription:CreateButton("Refresh data", refreshData)
+            rootDescription:CreateButton("Show / hide bag-slot window", toggleFrame)
+            rootDescription:CreateButton("Show / hide summon queues", toggleQueue)
+            rootDescription:CreateButton("Sync summon data", syncSummoning)
+            rootDescription:CreateButton("Close", closeWindow)
+        end)
+        return
+    end
+
     local menu = {
         {
             text = "Refresh data",
             notCheckable = true,
-            func = function()
-                saveCurrentCharacter(true)
-                refreshDisplay()
-            end,
+            func = refreshData,
         },
         {
-            text = "Show / hide window",
+            text = "Show / hide bag-slot window",
             notCheckable = true,
             func = toggleFrame,
         },
         {
+            text = "Show / hide summon queues",
+            notCheckable = true,
+            func = toggleQueue,
+        },
+        {
+            text = "Sync summon data",
+            notCheckable = true,
+            func = syncSummoning,
+        },
+        {
             text = "Close",
             notCheckable = true,
-            func = function()
-                if state.frame then
-                    state.frame:Hide()
-                end
-            end,
+            func = closeWindow,
         },
     }
 
-    EasyMenu(menu, ensureMenuFrame(), anchor, 0, 0, "MENU")
+    if EasyMenu then
+        EasyMenu(menu, ensureMenuFrame(), anchor, 0, 0, "MENU")
+    end
 end
 
-local function ensureMinimapButton()
+ensureMinimapButton = function()
     if state.minimapButton then
         return state.minimapButton
     end
@@ -1010,7 +1055,7 @@ local function updateFontList()
     end
 end
 
-local function applyTypography()
+applyTypography = function()
     applyMainWindowTypography()
 
     if state.fontSizeSlider then
@@ -1026,7 +1071,7 @@ local function applyTypography()
     refreshDisplay()
 end
 
-local function ensureSettingsPanel()
+ensureSettingsPanel = function()
     if state.settingsPanel then
         return state.settingsPanel
     end
@@ -1173,6 +1218,7 @@ local function ensureSettingsPanel()
         category.ID = panel.name
         Settings.RegisterAddOnCategory(category)
         state.settingsCategory = category
+        LuxaLocksSettingsCategory = category
     elseif InterfaceOptions_AddCategory then
         InterfaceOptions_AddCategory(panel)
     end
